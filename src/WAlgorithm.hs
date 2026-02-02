@@ -349,7 +349,7 @@ decomposeConstraints constraints =
         ]
       finalSub <- addSubstitutions acc newSubs
       Log.trace
-        "After adding subtitution to decomposed constraints"
+        "After adding susbtitution to decomposed constraints"
         [ field "original constr" constr
         , field "new substitutions" newSubs
         , field "merged substitution" finalSub
@@ -384,7 +384,7 @@ solveExpressionFullInfo context expression = do
               <> line
               <> indent 4 (pretty expression)
               <> line
-              <> pretty @String "Infered type:"
+              <> pretty @String "Inferred type:"
               <> line
               <> indent 4 (pretty inferType)
               <> line
@@ -404,7 +404,7 @@ solveExpressionFullInfo context expression = do
                   <> line
                   <> indent 4 (pretty expression)
                   <> line
-                  <> pretty @String "Infered type:"
+                  <> pretty @String "Inferred type:"
                   <> line
                   <> indent 4 (pretty inferType)
                   <> line

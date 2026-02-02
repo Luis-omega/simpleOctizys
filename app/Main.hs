@@ -62,7 +62,7 @@ mainEffect
   => State Int :> es
   => Eff es ()
 mainEffect = do
-  (context, inferedType, constraints, substitution, solvedType) <-
+  (context, inferredType, constraints, substitution, solvedType) <-
     solveExpressionFullInfo
       testContext
       testExpression
@@ -71,14 +71,14 @@ mainEffect = do
     simplifiedConstraintsDoc = pretty simplifiedConstraints
     ctxDoc = pretty context
     expressionDoc = pretty testExpression
-    inferedTypeDoc = pretty inferedType
+    inferredTypeDoc = pretty inferredType
     constraintsDoc = pretty constraints
     substitutionDoc = pretty substitution
     solvedTypeDoc = pretty solvedType
     finalDoc =
       prettyItem "Context" ctxDoc
         <> prettyItem "Original expression" expressionDoc
-        <> prettyItem "Infered type" inferedTypeDoc
+        <> prettyItem "Inferred type" inferredTypeDoc
         <> prettyItem "Generated Constraints" constraintsDoc
         <> prettyItem "Simplied constraints" simplifiedConstraintsDoc
         <> prettyItem "Substitution" substitutionDoc

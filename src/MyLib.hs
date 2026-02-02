@@ -396,11 +396,11 @@ inferDefinitions defs context = do
     mapM
       ( \(name, assignedType, value) ->
           do
-            (_, inferedType, generatedConstraints) <- infer value augmentedContext
+            (_, inferredType, generatedConstraints) <- infer value augmentedContext
             let
-              newConstraint = EqConstraint assignedType inferedType
+              newConstraint = EqConstraint assignedType inferredType
               newConstraints = newConstraint : generatedConstraints
-            pure ((name, inferedType), newConstraints)
+            pure ((name, inferredType), newConstraints)
       )
       variablesTypes
   let
@@ -473,11 +473,11 @@ infer expression context =
             <> valueConstraints
         )
     Annotation ty expr -> do
-      (_, inferedType, constraints) <- infer expr context
+      (_, inferredType, constraints) <- infer expr context
       pure
         ( context
-        , inferedType
-        , EqConstraint ty inferedType : constraints
+        , inferredType
+        , EqConstraint ty inferredType : constraints
         )
 
 
