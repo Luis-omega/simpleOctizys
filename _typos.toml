@@ -1,0 +1,17 @@
+[default]
+extend-ignore-identifiers-re = [
+  "ine"
+]
+
+[default.extend-words]
+hask = "hask"
+
+[type.haskell]
+extend-glob = ["*.hs"]
+
+[type.markdown]
+extend-glob = ["*.md"]
+
+[type.yaml]
+extend-glob = ["*.yaml"]
+check-file = false
