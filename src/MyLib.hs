@@ -122,6 +122,19 @@ instance Pretty SimpleType where
         <> pretty '}'
 
 
+hasTypeVar
+  :: Symbol
+  -> SimpleType
+  -> Bool
+hasTypeVar s (TypeVariable sr) = s == sr
+hasTypeVar _ Boolean = False
+hasTypeVar _ IntType = False
+hasTypeVar s (Arrow arg out) =
+  hasTypeVar s arg || hasTypeVar s out
+hasTypeVar s (RecordType fs) =
+  Map.foldr (||) False (Map.map (hasTypeVar s) fs)
+
+
 data Definition = Definition
   { name :: Symbol
   , annotation :: Maybe SimpleType

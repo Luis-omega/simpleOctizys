@@ -111,7 +111,8 @@ library
     Logging.Levels
     Logging.Loggers
     MyLib
-    WAlgorithm
+    WAlgorithm.Substitution
+    WAlgorithm.Unification
 
   -- Modules included in this library but not exported.
   -- other-modules:
