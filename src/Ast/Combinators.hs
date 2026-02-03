@@ -1,7 +1,21 @@
 module Ast.Combinators where
 
-import Ast.Expression (Definition (..), Expression (..))
-import Ast.Symbol (makeField, makeSymbol)
+import Ast.Expression
+  ( Definition (..)
+  , Expression
+    ( Annotation
+    , Application
+    , BoolLiteral
+    , ExpressionVariable
+    , Function
+    , IntLiteral
+    , Let
+    , Record
+    , Selection
+    )
+  , Parameter (Parameter)
+  )
+import Ast.Symbol (FieldName, Symbol, makeField, makeSymbol)
 import Ast.Type (SimpleType (..))
 import Control.Arrow ((<<<))
 import qualified Data.Bifunctor
@@ -44,8 +58,16 @@ var :: String -> Expression
 var x = ExpressionVariable (makeSymbol x)
 
 
-function :: String -> Expression -> Expression
-function v = Function (makeSymbol v)
+parameter :: String -> Maybe SimpleType -> Parameter
+parameter v = parameterWithSymbol (makeSymbol v)
+
+
+parameterWithSymbol :: Symbol -> Maybe SimpleType -> Parameter
+parameterWithSymbol = Parameter
+
+
+function :: Parameter -> Expression -> Expression
+function = Function
 
 
 application :: Expression -> [Expression] -> Expression
@@ -60,10 +82,20 @@ record =
         )
 
 
+recordWithSymbols :: [(Symbol, Expression)] -> Expression
+recordWithSymbols =
+  Record
+    <<< Map.fromList
+
+
 selection
   :: Expression -> String -> Expression
 selection e field =
   Selection e (makeField field)
+
+
+selectionWithField :: Expression -> FieldName -> Expression
+selectionWithField = Selection
 
 
 letExp :: [Definition] -> Expression -> Expression

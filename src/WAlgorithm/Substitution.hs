@@ -6,6 +6,9 @@ module WAlgorithm.Substitution
   , applySubstitutionItemToType
   , applySubstitutionToConstraint
   , applySubstitutionToType
+  , applySubstitutionToExpression
+  , applySubstitutionToParameter
+  , applySubstitutionToDefinition
   , verifyNotRecursive
   ) where
 
@@ -15,6 +18,14 @@ import Effectful (Eff, (:>))
 import Effectful.Error.Static (Error)
 import Prettyprinter (Pretty (pretty), line, (<+>))
 
+import Ast.Expression
+  ( Definition (Definition, annotation, name)
+  , Expression (..)
+  , Parameter (Parameter)
+  , getParameterSymbol
+  , getParameterType
+  , value
+  )
 import Ast.Inference (Constraint (..))
 import Ast.Symbol (Symbol)
 import Ast.Type (SimpleType (..), hasTypeVar)
@@ -121,7 +132,7 @@ applySubstitutionToType
   -> Eff es SimpleType
 applySubstitutionToType (Substitution ls) ty =
   foldM
-    ( \accType subs@(SubstitutionItem s _) -> do
+    ( \accType subs -> do
         pure (applySubstitutionItemToType subs accType)
     )
     ty
@@ -141,3 +152,69 @@ applySubstitutionToConstraint s (EqConstraint t1 t2) = do
 applySubstitutionToConstraint s (HasFieldConstraint ty name) = do
   newType <- applySubstitutionToType s ty
   pure $ HasFieldConstraint newType name
+
+
+applySubstitutionToParameter
+  :: Error String :> es
+  => Log :> es
+  => Substitution
+  -> Parameter
+  -> Eff es Parameter
+applySubstitutionToParameter s p = do
+  paramType <- mapM (applySubstitutionToType s) (getParameterType p)
+  pure $ Parameter (getParameterSymbol p) paramType
+
+
+applySubstitutionToDefinition
+  :: Error String :> es
+  => Log :> es
+  => Substitution
+  -> Definition
+  -> Eff es Definition
+applySubstitutionToDefinition s d = do
+  newAnnotation <- mapM (applySubstitutionToType s) d.annotation
+  newExpression <- applySubstitutionToExpression s d.value
+  pure $ Definition d.name newAnnotation newExpression
+
+
+applySubstitutionToExpression
+  :: Error String :> es
+  => Log :> es
+  => Substitution
+  -> Expression
+  -> Eff es Expression
+applySubstitutionToExpression s expr =
+  case expr of
+    IntLiteral _ -> pure expr
+    BoolLiteral _ -> pure expr
+    ExpressionVariable _ -> pure expr
+    Function param result -> do
+      newParam <- applySubstitutionToParameter s param
+      newResult <- applySubstitutionToExpression s result
+      pure $ Function newParam newResult
+    Application f arg -> do
+      newF <- applySubstitutionToExpression s f
+      newArg <- applySubstitutionToExpression s arg
+      pure $ Application newF newArg
+    Record fs -> do
+      let
+        items = Map.toList fs
+      newItems <-
+        mapM
+          ( \(x, y) -> do
+              yResult <- applySubstitutionToExpression s y
+              pure (x, yResult)
+          )
+          items
+      pure $ Record $ Map.fromList newItems
+    Selection expre name -> do
+      newExpr <- applySubstitutionToExpression s expre
+      pure $ Selection newExpr name
+    Let defs result -> do
+      newDefs <- mapM (applySubstitutionToDefinition s) defs
+      newResult <- applySubstitutionToExpression s result
+      pure $ Let newDefs newResult
+    Annotation ty expre -> do
+      newTy <- applySubstitutionToType s ty
+      newExpr <- applySubstitutionToExpression s expre
+      pure $ Annotation newTy newExpr

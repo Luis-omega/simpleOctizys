@@ -39,11 +39,32 @@ instance Pretty Definition where
       <> pretty value
 
 
+data Parameter = Parameter
+  { name :: Symbol
+  , annotation :: Maybe SimpleType
+  }
+  deriving (Show, Eq, Ord, Generic)
+  deriving (ToJSON) via Generically Parameter
+
+
+instance Pretty Parameter where
+  pretty (Parameter n (Just an)) = Pretty.parens (pretty n <+> pretty ':' <+> pretty an)
+  pretty (Parameter n Nothing) = pretty n
+
+
+getParameterSymbol :: Parameter -> Symbol
+getParameterSymbol (Parameter n _) = n
+
+
+getParameterType :: Parameter -> Maybe SimpleType
+getParameterType (Parameter _ an) = an
+
+
 data Expression
   = IntLiteral Int
   | BoolLiteral Bool
   | ExpressionVariable Symbol
-  | Function {parameter :: Symbol, result :: Expression}
+  | Function {parameter :: Parameter, result :: Expression}
   | Application {function :: Expression, argument :: Expression}
   | Record {fields :: Map Symbol Expression}
   | Selection {receiver :: Expression, fieldName :: FieldName}
@@ -61,6 +82,30 @@ braces :: Pretty a => a -> Doc ann
 braces x = Pretty.braces $ pretty x
 
 
+prettyExpressionMaybeParens :: Expression -> Doc ann
+prettyExpressionMaybeParens t@(IntLiteral _) = pretty t
+prettyExpressionMaybeParens t@(BoolLiteral _) = pretty t
+prettyExpressionMaybeParens t@(ExpressionVariable _) = pretty t
+prettyExpressionMaybeParens t@(Function _ _) = Pretty.parens $ pretty t
+prettyExpressionMaybeParens t@(Application _ _) = Pretty.parens $ pretty t
+prettyExpressionMaybeParens t@(Record _) = pretty t
+prettyExpressionMaybeParens t@(Selection _ _) = pretty t
+prettyExpressionMaybeParens t@(Let _ _) = Pretty.parens $ pretty t
+prettyExpressionMaybeParens t@(Annotation _ _) = Pretty.parens $ pretty t
+
+
+prettyFuncMaybeParens :: Expression -> Doc ann
+prettyFuncMaybeParens t@(IntLiteral _) = pretty t
+prettyFuncMaybeParens t@(BoolLiteral _) = pretty t
+prettyFuncMaybeParens t@(ExpressionVariable _) = pretty t
+prettyFuncMaybeParens t@(Function _ _) = Pretty.parens $ pretty t
+prettyFuncMaybeParens t@(Application _ _) = pretty t
+prettyFuncMaybeParens t@(Record _) = pretty t
+prettyFuncMaybeParens t@(Selection _ _) = pretty t
+prettyFuncMaybeParens t@(Let _ _) = Pretty.parens $ pretty t
+prettyFuncMaybeParens t@(Annotation _ _) = Pretty.parens $ pretty t
+
+
 instance Pretty Expression where
   pretty (IntLiteral x) = pretty x
   pretty (BoolLiteral x) = pretty x
@@ -71,7 +116,7 @@ instance Pretty Expression where
       <+> pretty @String "->"
       <+> pretty body
   pretty (Application f arg) =
-    parens f <+> parens arg
+    prettyFuncMaybeParens f <+> prettyExpressionMaybeParens arg
   pretty (Record fields) =
     let
       items = Map.toList fields
@@ -83,7 +128,7 @@ instance Pretty Expression where
         <> line
         <> pretty '}'
   pretty (Selection receiver name) =
-    parens receiver <> pretty '.' <> pretty name
+    prettyExpressionMaybeParens receiver <> pretty '.' <> pretty name
   pretty (Let defs result) =
     pretty @String "let"
       <+> concatWith (\x y -> x <> pretty ';' <> line <> y) (pretty <$> defs)
@@ -92,4 +137,4 @@ instance Pretty Expression where
       <> line
       <> pretty result
   pretty (Annotation ty expr) =
-    Pretty.parens (parens expr <> pretty ':' <> pretty ty)
+    prettyExpressionMaybeParens expr <> pretty ':' <> pretty ty

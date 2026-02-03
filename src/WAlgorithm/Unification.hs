@@ -6,7 +6,7 @@ import qualified Data.Map as Map
 import Effectful (Eff, (:>))
 import Effectful.Error.Static (Error, throwError, tryError)
 import Effectful.State.Static.Local (State)
-import Prettyprinter (Pretty (pretty), line, (<+>))
+import Prettyprinter (Pretty (pretty), hardline, (<+>))
 
 import Ast.Context (Context)
 import Ast.Expression (Expression)
@@ -202,19 +202,22 @@ solveExpressionFullInfo
   => State Int :> es
   => Context
   -> Expression
-  -> Eff es (Context, SimpleType, [Constraint], Substitution, SimpleType)
+  -> Eff
+      es
+      (Context, SimpleType, [Constraint], Substitution, SimpleType, Expression)
 solveExpressionFullInfo context expression = do
-  (finalContext, inferType, constraints) <- infer expression context
+  (finalContext, inferType, annotatedExpression, constraints) <-
+    infer expression context
   maybeSubstitution <- tryError (decomposeConstraints constraints)
   case maybeSubstitution of
     Left (_, e) ->
       throwDocError
-        ( prettyWithHeader "Expression" expression
-            <> line
-            <> prettyWithHeader "Inferred type:" inferType
-            <> line
-            <> prettyWithHeader "Constraints:" constraints
-            <> line
+        ( prettyWithHeader "Expression" annotatedExpression
+            <> hardline
+            <> prettyWithHeader "Inferred type" inferType
+            <> hardline
+            <> prettyWithHeader "Constraints" constraints
+            <> hardline
             <> pretty e
         )
     Right substitution -> do
@@ -222,16 +225,23 @@ solveExpressionFullInfo context expression = do
       case maybeSolvedType of
         Left (_, e) ->
           throwDocError
-            ( prettyWithHeader "Expression" expression
-                <> line
-                <> prettyWithHeader "Inferred type:" inferType
-                <> line
-                <> prettyWithHeader "Constraints:" constraints
-                <> line
+            ( prettyWithHeader "Expression" annotatedExpression
+                <> hardline
+                <> prettyWithHeader "Inferred type" inferType
+                <> hardline
+                <> prettyWithHeader "Constraints" constraints
+                <> hardline
                 <> pretty e
             )
         Right solvedType ->
-          pure (finalContext, inferType, constraints, substitution, solvedType)
+          pure
+            ( finalContext
+            , inferType
+            , constraints
+            , substitution
+            , solvedType
+            , annotatedExpression
+            )
 
 
 solveExpression
@@ -240,10 +250,11 @@ solveExpression
   => State Int :> es
   => Context
   -> Expression
-  -> Eff es SimpleType
+  -> Eff es (SimpleType, Expression)
 solveExpression context expression = do
-  (_, _, _, _, finalType) <- solveExpressionFullInfo context expression
-  pure finalType
+  (_, _, _, _, finalType, finalExpression) <-
+    solveExpressionFullInfo context expression
+  pure (finalType, finalExpression)
 
 
 applySubstitutionToItem

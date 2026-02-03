@@ -42,7 +42,7 @@ goodIf =
 
 infiniteRecursion :: Expression
 infiniteRecursion =
-  function "x" $
+  function (parameter "x" Nothing) $
     application
       (var "x")
       [ var "x"
@@ -50,7 +50,7 @@ infiniteRecursion =
 
 
 testExpression :: Expression
-testExpression = infiniteRecursion
+testExpression = goodIf
 
 
 mainEffect
@@ -60,7 +60,13 @@ mainEffect
   => State Int :> es
   => Eff es ()
 mainEffect = do
-  (context, inferredType, constraints, substitution, solvedType) <-
+  ( context
+    , inferredType
+    , constraints
+    , substitution
+    , solvedType
+    , annotatedExpression
+    ) <-
     solveExpressionFullInfo
       testContext
       testExpression
@@ -68,7 +74,7 @@ mainEffect = do
     simplifiedConstraints = concatMap simplifyConstraint constraints
     finalDoc =
       prettyItem "Context" context
-        <> prettyItem "Original expression" testExpression
+        <> prettyItem "Original expression" annotatedExpression
         <> prettyItem "Inferred type" inferredType
         <> prettyItem "Generated Constraints" constraints
         <> prettyItem "Simplied constraints" simplifiedConstraints

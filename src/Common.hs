@@ -34,7 +34,6 @@ indentPretty x = indent defaultIndentationSpaces (line <> pretty x)
 prettyWithHeader :: Pretty a => String -> a -> Doc ann
 prettyWithHeader header value =
   pretty header
-    <> line
     <> indentPretty value
 
 

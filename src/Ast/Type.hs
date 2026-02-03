@@ -5,7 +5,8 @@ import qualified Data.Map as Map
 
 -- \* Pretty imports
 import Prettyprinter
-  ( Pretty (pretty)
+  ( Doc
+  , Pretty (pretty)
   , line
   )
 import qualified Prettyprinter as Pretty
@@ -32,16 +33,22 @@ data SimpleType
   deriving (ToJSON) via Generically SimpleType
 
 
+prettyTypeMaybeParens :: SimpleType -> Doc ann
+prettyTypeMaybeParens t@(TypeVariable _) = pretty t
+prettyTypeMaybeParens t@Boolean = pretty t
+prettyTypeMaybeParens t@IntType = pretty t
+prettyTypeMaybeParens t@(Arrow _ _) = Pretty.parens (pretty t)
+prettyTypeMaybeParens t@(RecordType _) = pretty t
+
+
 instance Pretty SimpleType where
   pretty (TypeVariable s) = pretty s <> pretty 't'
   pretty Boolean = pretty @String "Bool"
   pretty IntType = pretty @String "Int"
   pretty (Arrow arg res) =
-    Pretty.parens
-      ( pretty arg
-          <> pretty @String " -> "
-          <> pretty res
-      )
+    prettyTypeMaybeParens arg
+      <> pretty @String " -> "
+      <> pretty res
   pretty (RecordType fields) =
     let
       items = Map.toList fields
