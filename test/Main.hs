@@ -1,5 +1,14 @@
 module Main (main) where
 
+import Test.Tasty (defaultMain, testGroup)
+
+import qualified Test.Inference as Inference
+
 
 main :: IO ()
-main = putStrLn "test"
+main =
+  defaultMain $
+    testGroup
+      "unit tests"
+      [ Inference.tests
+      ]
