@@ -6,9 +6,15 @@ import qualified Data.Map as Map
 import Effectful (Eff, (:>))
 import Effectful.Error.Static (Error, throwError, tryError)
 import Effectful.State.Static.Local (State)
-import MyLib
-import Prettyprinter (Pretty (pretty), indent, line, (<+>))
+import Prettyprinter (Pretty (pretty), line, (<+>))
 
+import Ast.Context (Context)
+import Ast.Expression (Expression)
+import Ast.Inference (Constraint (..), infer)
+import Ast.Symbol (Symbol)
+import Ast.Type (SimpleType (..))
+import Common (prettyWithHeader, throwDocError)
+import Data.Maybe (mapMaybe)
 import Logging.Effect (Log)
 import Logging.Entry (field)
 import qualified Logging.Loggers as Log
@@ -56,12 +62,10 @@ unify lt rt =
         TypeVariable rs ->
           pure (singletonSubstitution rs Boolean)
         _ ->
-          throwError
-            ( renderDoc
-                ( prefixMessage
-                    <+> pretty @String "a Bool with"
-                    <+> pretty rt
-                )
+          throwDocError
+            ( prefixMessage
+                <+> pretty @String "a Bool with"
+                <+> pretty rt
             )
     IntType ->
       case rt of
@@ -70,12 +74,10 @@ unify lt rt =
         TypeVariable rs ->
           pure (singletonSubstitution rs IntType)
         _ ->
-          throwError
-            ( renderDoc
-                ( prefixMessage
-                    <+> pretty @String "a Int with"
-                    <+> pretty rt
-                )
+          throwDocError
+            ( prefixMessage
+                <+> pretty @String "a Int with"
+                <+> pretty rt
             )
     TypeVariable ls ->
       verifyNotRecursive ls rt
@@ -89,13 +91,11 @@ unify lt rt =
           outSubs <- unify outlSubs outRSubs
           addSubstitutions argSubs outSubs
         _ ->
-          throwError
-            ( renderDoc
-                ( prefixMessage
-                    <+> pretty lt
-                    <+> pretty @String "with"
-                    <+> pretty rt
-                )
+          throwDocError
+            ( prefixMessage
+                <+> pretty lt
+                <+> pretty @String "with"
+                <+> pretty rt
             )
     RecordType fsl ->
       case rt of
@@ -111,48 +111,40 @@ unify lt rt =
                 ([], []) ->
                   foldM addSubstitutions emptySubstitution subs
                 ([], _) ->
-                  throwError
-                    ( renderDoc
-                        ( prefixMessage
-                            <+> pretty lt
-                            <+> pretty @String "with"
-                            <+> pretty rt
-                            <+> "fields in the right record that aren't on the left one are"
-                            <+> pretty onlyR
-                        )
+                  throwDocError
+                    ( prefixMessage
+                        <+> pretty lt
+                        <+> pretty @String "with"
+                        <+> pretty rt
+                        <+> "fields in the right record that aren't on the left one are"
+                        <+> pretty onlyR
                     )
                 (_, []) ->
-                  throwError
-                    ( renderDoc
-                        ( prefixMessage
-                            <+> pretty lt
-                            <+> pretty @String "with"
-                            <+> pretty rt
-                            <+> "fields in the left record that aren't on the right one are"
-                            <+> pretty onlyL
-                        )
+                  throwDocError
+                    ( prefixMessage
+                        <+> pretty lt
+                        <+> pretty @String "with"
+                        <+> pretty rt
+                        <+> "fields in the left record that aren't on the right one are"
+                        <+> pretty onlyL
                     )
                 _ ->
-                  throwError
-                    ( renderDoc
-                        ( prefixMessage
-                            <+> pretty lt
-                            <+> pretty @String "with"
-                            <+> pretty rt
-                            <+> "fields in the right record that aren't on the left one are"
-                            <+> pretty onlyR
-                            <+> "fields in the left record that aren't on the right one are"
-                            <+> pretty onlyL
-                        )
+                  throwDocError
+                    ( prefixMessage
+                        <+> pretty lt
+                        <+> pretty @String "with"
+                        <+> pretty rt
+                        <+> "fields in the right record that aren't on the left one are"
+                        <+> pretty onlyR
+                        <+> "fields in the left record that aren't on the right one are"
+                        <+> pretty onlyL
                     )
         _ ->
-          throwError
-            ( renderDoc
-                ( prefixMessage
-                    <+> pretty lt
-                    <+> pretty @String "with"
-                    <+> pretty rt
-                )
+          throwDocError
+            ( prefixMessage
+                <+> pretty lt
+                <+> pretty @String "with"
+                <+> pretty rt
             )
   where
     prefixMessage = pretty @String "Can't unify"
@@ -216,42 +208,28 @@ solveExpressionFullInfo context expression = do
   maybeSubstitution <- tryError (decomposeConstraints constraints)
   case maybeSubstitution of
     Left (_, e) ->
-      throwError $
-        renderDoc
-          ( pretty @String "Expression:"
-              <> line
-              <> indent 4 (pretty expression)
-              <> line
-              <> pretty @String "Inferred type:"
-              <> line
-              <> indent 4 (pretty inferType)
-              <> line
-              <> pretty @String "Constraints:"
-              <> line
-              <> indent 4 (pretty constraints)
-              <> line
-              <> pretty e
-          )
+      throwDocError
+        ( prettyWithHeader "Expression" expression
+            <> line
+            <> prettyWithHeader "Inferred type:" inferType
+            <> line
+            <> prettyWithHeader "Constraints:" constraints
+            <> line
+            <> pretty e
+        )
     Right substitution -> do
       maybeSolvedType <- tryError (applySubstitutionToType substitution inferType)
       case maybeSolvedType of
         Left (_, e) ->
-          throwError $
-            renderDoc
-              ( pretty @String "Expression:"
-                  <> line
-                  <> indent 4 (pretty expression)
-                  <> line
-                  <> pretty @String "Inferred type:"
-                  <> line
-                  <> indent 4 (pretty inferType)
-                  <> line
-                  <> pretty @String "Constraints:"
-                  <> line
-                  <> indent 4 (pretty constraints)
-                  <> line
-                  <> pretty e
-              )
+          throwDocError
+            ( prettyWithHeader "Expression" expression
+                <> line
+                <> prettyWithHeader "Inferred type:" inferType
+                <> line
+                <> prettyWithHeader "Constraints:" constraints
+                <> line
+                <> pretty e
+            )
         Right solvedType ->
           pure (finalContext, inferType, constraints, substitution, solvedType)
 
@@ -266,3 +244,34 @@ solveExpression
 solveExpression context expression = do
   (_, _, _, _, finalType) <- solveExpressionFullInfo context expression
   pure finalType
+
+
+applySubstitutionToItem
+  :: Error String :> es
+  => Log :> es
+  => Substitution
+  -> SubstitutionItem
+  -> Eff es (SubstitutionItem, Maybe Substitution)
+applySubstitutionToItem subs@(Substitution subsLists) (SubstitutionItem name ty) = do
+  newType <- applySubstitutionToType subs ty
+  let newItem = SubstitutionItem name newType
+  case lookup name ((\(SubstitutionItem n t) -> (n, t)) <$> subsLists) of
+    Just t -> do
+      newSubs <- unify ty t
+      pure (newItem, Just newSubs)
+    Nothing -> pure (newItem, Nothing)
+
+
+addSubstitutions
+  :: Error String :> es
+  => Log :> es
+  => Substitution
+  -> Substitution
+  -> Eff es Substitution
+addSubstitutions left@(Substitution itemsL) (Substitution items) = do
+  results <- mapM (applySubstitutionToItem left) items
+  let
+    newItems = fst <$> results
+    newSubs = mapMaybe snd results
+    newSubstitution = Substitution (itemsL <> newItems)
+  foldM addSubstitutions newSubstitution newSubs

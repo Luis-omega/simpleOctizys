@@ -1,13 +1,15 @@
-module Combinators where
+module Ast.Combinators where
 
+import Ast.Expression (Definition (..), Expression (..))
+import Ast.Symbol (makeField, makeSymbol)
+import Ast.Type (SimpleType (..))
 import Control.Arrow ((<<<))
 import qualified Data.Bifunctor
 import qualified Data.Map as Map
-import MyLib
 
 
 typeVar :: String -> SimpleType
-typeVar x = TypeVariable (Symbol x)
+typeVar x = TypeVariable (makeSymbol x)
 
 
 boolType :: SimpleType
@@ -26,7 +28,7 @@ recordType :: [(String, SimpleType)] -> SimpleType
 recordType =
   RecordType
     <<< Map.fromList
-    <<< ( Data.Bifunctor.first Symbol <$>
+    <<< ( Data.Bifunctor.first makeSymbol <$>
         )
 
 
@@ -39,11 +41,11 @@ bool = BoolLiteral
 
 
 var :: String -> Expression
-var x = ExpressionVariable (Symbol x)
+var x = ExpressionVariable (makeSymbol x)
 
 
 function :: String -> Expression -> Expression
-function v = Function (Symbol v)
+function v = Function (makeSymbol v)
 
 
 application :: Expression -> [Expression] -> Expression
@@ -54,14 +56,14 @@ record :: [(String, Expression)] -> Expression
 record =
   Record
     <<< Map.fromList
-    <<< ( Data.Bifunctor.first Symbol <$>
+    <<< ( Data.Bifunctor.first makeSymbol <$>
         )
 
 
 selection
   :: Expression -> String -> Expression
 selection e field =
-  Selection e (FieldName field)
+  Selection e (makeField field)
 
 
 letExp :: [Definition] -> Expression -> Expression
@@ -73,4 +75,4 @@ annotate e ty = Annotation ty e
 
 
 def :: String -> Maybe SimpleType -> Expression -> Definition
-def name = Definition (Symbol name)
+def name = Definition (makeSymbol name)

@@ -1,23 +1,25 @@
 module WAlgorithm.Substitution
-  ( Substitution
-  , SubstitutionItem
+  ( Substitution (Substitution)
+  , SubstitutionItem (SubstitutionItem)
   , emptySubstitution
   , singletonSubstitution
   , applySubstitutionItemToType
   , applySubstitutionToConstraint
   , applySubstitutionToType
-  , addSubstitutions
   , verifyNotRecursive
   ) where
 
 import Control.Monad (foldM)
 import qualified Data.Map as Map
-import Data.Maybe (mapMaybe)
 import Effectful (Eff, (:>))
-import Effectful.Error.Static (Error, throwError)
-import MyLib
+import Effectful.Error.Static (Error)
 import Prettyprinter (Pretty (pretty), line, (<+>))
 
+import Ast.Inference (Constraint (..))
+import Ast.Symbol (Symbol)
+import Ast.Type (SimpleType (..), hasTypeVar)
+import Common (throwDocError)
+import qualified Common
 import Data.Aeson (ToJSON)
 import GHC.Generics (Generic, Generically (..))
 import Logging.Effect (Log)
@@ -58,7 +60,7 @@ verifyNotRecursive s ty =
             [ field "symbol" (TypeVariable s)
             , field "type" ty
             ]
-          throwError (renderDoc errorMsg)
+          throwDocError errorMsg
     else pure (Substitution [SubstitutionItem s ty])
 
 
@@ -83,7 +85,7 @@ instance Pretty Substitution where
   pretty (Substitution ls) =
     pretty '('
       <+> line
-      <+> prettyItemList
+      <+> Common.prettyItemList
         ((\(SubstitutionItem s ty) -> (TypeVariable s, ty)) <$> ls)
         (pretty ',')
         (pretty '~')
@@ -124,37 +126,6 @@ applySubstitutionToType (Substitution ls) ty =
     )
     ty
     ls
-
-
-applySubstitutionToItem
-  :: Error String :> es
-  => Log :> es
-  => Substitution
-  -> SubstitutionItem
-  -> Eff es (SubstitutionItem, Maybe Substitution)
-applySubstitutionToItem subs@(Substitution subsLists) (SubstitutionItem name ty) = do
-  newType <- applySubstitutionToType subs ty
-  let newItem = SubstitutionItem name newType
-  case lookup name ((\(SubstitutionItem n t) -> (n, t)) <$> subsLists) of
-    Just t -> do
-      newSubs <- unify ty t
-      pure (newItem, Just newSubs)
-    Nothing -> pure (newItem, Nothing)
-
-
-addSubstitutions
-  :: Error String :> es
-  => Log :> es
-  => Substitution
-  -> Substitution
-  -> Eff es Substitution
-addSubstitutions left@(Substitution itemsL) (Substitution items) = do
-  results <- mapM (applySubstitutionToItem left) items
-  let
-    newItems = fst <$> results
-    newSubs = mapMaybe snd results
-    newSubstitution = Substitution (itemsL <> newItems)
-  foldM addSubstitutions newSubstitution newSubs
 
 
 applySubstitutionToConstraint

@@ -102,7 +102,13 @@ library
 
   -- Modules exported by the library.
   exposed-modules:
-    Combinators
+    Ast.Combinators
+    Ast.Context
+    Ast.Expression
+    Ast.Inference
+    Ast.Symbol
+    Ast.Type
+    Common
     Effects.Console.Effect
     Effects.Console.Interpreter
     Logging.Effect
@@ -110,7 +116,6 @@ library
     Logging.Interpreters.Console
     Logging.Levels
     Logging.Loggers
-    MyLib
     WAlgorithm.Substitution
     WAlgorithm.Unification
 

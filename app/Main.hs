@@ -1,6 +1,5 @@
 module Main where
 
-import Combinators
 import qualified Data.Text as Text
 import Effectful (Eff, runEff, (:>))
 import Effectful.Error.Static (Error, runErrorNoCallStack)
@@ -11,17 +10,16 @@ import Effects.Console.Interpreter (runConsole)
 import Logging.Effect (Log)
 import Logging.Interpreters.Console (runLog)
 import qualified Logging.Levels as Log
-import MyLib
-  ( Context
-  , Expression
-  , contextFromList
-  , renderDoc
-  , simplifyConstraint
-  )
-import Prettyprinter (indent, line, pretty)
-import WAlgorithm
-  ( solveExpressionFullInfo
-  )
+import Prettyprinter (line)
+
+-- \* Internal imports
+
+import Ast.Combinators
+import Ast.Context (Context, contextFromList)
+import Ast.Expression (Expression)
+import Ast.Inference (simplifyConstraint)
+import Common (prettyWithHeader, renderDoc)
+import WAlgorithm.Unification (solveExpressionFullInfo)
 
 
 testContext :: Context
@@ -68,27 +66,18 @@ mainEffect = do
       testExpression
   let
     simplifiedConstraints = concatMap simplifyConstraint constraints
-    simplifiedConstraintsDoc = pretty simplifiedConstraints
-    ctxDoc = pretty context
-    expressionDoc = pretty testExpression
-    inferredTypeDoc = pretty inferredType
-    constraintsDoc = pretty constraints
-    substitutionDoc = pretty substitution
-    solvedTypeDoc = pretty solvedType
     finalDoc =
-      prettyItem "Context" ctxDoc
-        <> prettyItem "Original expression" expressionDoc
-        <> prettyItem "Inferred type" inferredTypeDoc
-        <> prettyItem "Generated Constraints" constraintsDoc
-        <> prettyItem "Simplied constraints" simplifiedConstraintsDoc
-        <> prettyItem "Substitution" substitutionDoc
-        <> prettyItem "Solved Type" solvedTypeDoc
+      prettyItem "Context" context
+        <> prettyItem "Original expression" testExpression
+        <> prettyItem "Inferred type" inferredType
+        <> prettyItem "Generated Constraints" constraints
+        <> prettyItem "Simplied constraints" simplifiedConstraints
+        <> prettyItem "Substitution" substitution
+        <> prettyItem "Solved Type" solvedType
   Console.putText (Text.pack (renderDoc finalDoc))
   where
     prettyItem name doc =
-      pretty @String name
-        <> line
-        <> indent 4 doc
+      prettyWithHeader name doc
         <> line
 
 
