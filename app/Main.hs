@@ -49,8 +49,42 @@ infiniteRecursion =
       ]
 
 
+applyId :: Expression
+applyId =
+  application
+    ( function
+        (parameter "f" Nothing)
+        ( function (parameter "x" Nothing) (application (var "f") [var "x"])
+        )
+    )
+    [ function (parameter "y" Nothing) (var "y")
+    ]
+
+
+genTuple :: Expression
+genTuple =
+  function
+    (parameter "f" Nothing)
+    ( record
+        [ ("l1", application (var "f") [int 1])
+        , ("l2", application (var "f") [int 2])
+        ]
+    )
+
+
+wrongGenTuple :: Expression
+wrongGenTuple =
+  function
+    (parameter "f" Nothing)
+    ( record
+        [ ("l1", application (var "f") [int 1])
+        , ("l2", application (var "f") [bool True])
+        ]
+    )
+
+
 testExpression :: Expression
-testExpression = infiniteRecursion
+testExpression = wrongGenTuple
 
 
 mainEffect
@@ -60,8 +94,7 @@ mainEffect
   => State Int :> es
   => Eff es ()
 mainEffect = do
-  ( context
-    , inferredType
+  ( inferredType
     , constraints
     , substitution
     , solvedType
@@ -73,7 +106,7 @@ mainEffect = do
   let
     simplifiedConstraints = concatMap simplifyConstraint constraints
     finalDoc =
-      prettyItem "Context" context
+      prettyItem "Context" testContext
         <> prettyItem "Original expression" annotatedExpression
         <> prettyItem "Inferred type" inferredType
         <> prettyItem "Generated Constraints" constraints

@@ -126,7 +126,7 @@ inferDefinitions defs context = do
     mapM
       ( \(name, assignedType, value) ->
           do
-            (_, inferredType, annotatedExp, generatedConstraints) <-
+            (inferredType, annotatedExp, generatedConstraints) <-
               infer value augmentedContext
             let
               newConstraint = EqConstraint assignedType inferredType
@@ -146,20 +146,20 @@ infer
   => State Int :> es
   => Expression
   -> Context
-  -> Eff es (Context, SimpleType, Expression, [Constraint])
+  -> Eff es (SimpleType, Expression, [Constraint])
 infer expression context =
   case expression of
-    IntLiteral _ -> pure (context, IntType, annotate expression IntType, [])
-    BoolLiteral _ -> pure (context, Boolean, annotate expression Boolean, [])
+    IntLiteral _ -> pure (IntType, annotate expression IntType, [])
+    BoolLiteral _ -> pure (Boolean, annotate expression Boolean, [])
     ExpressionVariable symbol -> do
       ty <- Context.findExpressionVariable symbol context
-      pure (context, ty, annotate expression ty, [])
+      pure (ty, annotate expression ty, [])
     Function param result -> do
       paramTypeVar <-
         maybe freshTypeVar pure (getParameterType param)
       let
         paramSymbol = getParameterSymbol param
-      (ctx, sty, annotatedBody, constraints) <-
+      (sty, annotatedBody, constraints) <-
         infer
           result
           ( Context.addTypeToExpression context paramSymbol paramTypeVar
@@ -172,15 +172,14 @@ infer expression context =
         annotatedParam = parameterWithSymbol paramSymbol (Just paramTypeVar)
         annotatedExpression = annotate (function annotatedParam annotatedBody) inferredType
       pure
-        ( ctx
-        , inferredType
+        ( inferredType
         , annotatedExpression
         , constraints
         )
     Application f arg -> do
       resultType <- freshTypeVar
-      (_, fType, fAnnotated, constraintsF) <- infer f context
-      (_, argType, argAnnotated, constraintsArg) <- infer arg context
+      (fType, fAnnotated, constraintsF) <- infer f context
+      (argType, argAnnotated, constraintsArg) <- infer arg context
       let newArrow = Arrow argType resultType
           newConstraints =
             EqConstraint fType newArrow
@@ -188,12 +187,12 @@ infer expression context =
                     <> constraintsArg
                 )
           annotatedExpression = annotate (application fAnnotated [argAnnotated]) resultType
-      pure (context, resultType, annotatedExpression, newConstraints)
+      pure (resultType, annotatedExpression, newConstraints)
     Record fs -> do
       items <-
         mapM
           ( \(name, x) -> do
-              (_, ty, ex, css) <- infer x context
+              (ty, ex, css) <- infer x context
               pure ((name, ty, ex), css)
           )
           (Map.toList fs)
@@ -204,33 +203,31 @@ infer expression context =
         constraints = snd <$> items
         recordTy = RecordType (Map.fromList fieldTypes)
         annotatedExpression = annotate recordWithNotes recordTy
-      pure (context, recordTy, annotatedExpression, concat constraints)
+      pure (recordTy, annotatedExpression, concat constraints)
     Selection expr name -> do
       fieldType <- freshTypeVar
-      (_, exprType, exprAnnotated, constraints) <- infer expr context
+      (exprType, exprAnnotated, constraints) <- infer expr context
       let
         finalConstraints = HasFieldConstraint exprType name : constraints
         annotatedExpression = annotate (selectionWithField exprAnnotated name) fieldType
-      pure (context, fieldType, annotatedExpression, finalConstraints)
+      pure (fieldType, annotatedExpression, finalConstraints)
     Let defs result -> do
       (temporalContext, _, annotatedDefs, varConstraints) <-
         inferDefinitions defs context
-      (_, valueType, annotatedValue, valueConstraints) <-
+      (valueType, annotatedValue, valueConstraints) <-
         infer result temporalContext
       let
         annotatedExpression = letExp annotatedDefs annotatedValue
       pure
-        ( context
-        , valueType
+        ( valueType
         , annotatedExpression
         , varConstraints
             <> valueConstraints
         )
     Annotation ty expr -> do
-      (_, inferredType, annotatedExpression, constraints) <- infer expr context
+      (inferredType, annotatedExpression, constraints) <- infer expr context
       pure
-        ( context
-        , inferredType
+        ( inferredType
         , annotatedExpression
         , EqConstraint ty inferredType : constraints
         )

@@ -149,28 +149,28 @@ unify lt rt =
     prefixMessage = pretty @String "Can't unify"
 
 
-decomposeConstraint
+solveConstraint
   :: Error String :> es
   => Log :> es
   => Constraint
   -> Eff es Substitution
-decomposeConstraint (EqConstraint tl tr) =
+solveConstraint (EqConstraint tl tr) =
   unify tl tr
-decomposeConstraint (HasFieldConstraint _ _) =
+solveConstraint (HasFieldConstraint _ _) =
   throwError "Not implemented has field constraint resolution"
 
 
-decomposeConstraints
+solveConstraints
   :: Error String :> es
   => Log :> es
   => [Constraint]
   -> Eff es Substitution
-decomposeConstraints constraints =
+solveConstraints constraints =
   go constraints emptySubstitution
   where
     go [] acc = pure acc
     go (constr : remain) acc = do
-      newSubs <- decomposeConstraint constr
+      newSubs <- solveConstraint constr
       Log.trace
         "After decompossing"
         [ field "original constr" constr
@@ -205,11 +205,11 @@ solveExpressionFullInfo
   -> Expression
   -> Eff
       es
-      (Context, SimpleType, [Constraint], Substitution, SimpleType, Expression)
+      (SimpleType, [Constraint], Substitution, SimpleType, Expression)
 solveExpressionFullInfo context expression = do
-  (finalContext, inferType, annotatedExpression, constraints) <-
+  (inferType, annotatedExpression, constraints) <-
     infer expression context
-  maybeSubstitution <- tryError (decomposeConstraints constraints)
+  maybeSubstitution <- tryError (solveConstraints constraints)
   case maybeSubstitution of
     Left (_, e) ->
       throwDocError
@@ -226,8 +226,7 @@ solveExpressionFullInfo context expression = do
         solvedType = applySubstitutionToType substitution inferType
        in
         pure
-          ( finalContext
-          , inferType
+          ( inferType
           , constraints
           , substitution
           , solvedType
@@ -243,6 +242,6 @@ solveExpression
   -> Expression
   -> Eff es (SimpleType, Expression)
 solveExpression context expression = do
-  (_, _, _, _, finalType, finalExpression) <-
+  (_, _, _, finalType, finalExpression) <-
     solveExpressionFullInfo context expression
   pure (finalType, finalExpression)

@@ -197,5 +197,7 @@ addSubstitutions
   :: Substitution
   -> Substitution
   -> Substitution
-addSubstitutions (Substitution itemsL) (Substitution itemsR) =
-  Substitution (Map.union itemsL itemsR)
+addSubstitutions (Substitution itemsL) s2@(Substitution itemsR) =
+  Substitution $
+    Map.map (applySubstitutionToType s2) itemsL
+      `Map.union` itemsR

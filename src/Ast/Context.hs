@@ -1,6 +1,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use tuple-section" #-}
+{-# HLINT ignore "Use (,)" #-}
 module Ast.Context where
 
 import Data.Bifunctor (Bifunctor (first))
@@ -101,20 +102,22 @@ addExpressionVars newVars (Context ctx) =
             <$> newVars
         )
     (regularItems, repeatedItems) =
-      Map.foldrWithKey go (Map.empty, Map.empty) countUniques
-      where
-        go k [x] (m1, m2) = (Map.insert k x m1, m2)
-        go k xs (m1, m2) = (m1, Map.insert k xs m2)
+      Map.mapEither
+        ( \xs ->
+            case xs of
+              [x] -> Left x
+              _ -> Right xs
+        )
+        countUniques
    in
-    if Map.null regularItems
+    if Map.null repeatedItems
       then
-        let keys = Map.keys regularItems
-            lookupResults = (\k -> (\x -> (k, x)) <$> Map.lookup k ctx) <$> keys
-         in case catMaybes lookupResults of
-              [] -> pure $ Context $ Map.union ctx regularItems
-              newValues ->
+        let inter = Map.intersectionWith (\x y -> (x, y)) ctx regularItems
+         in if Map.null inter
+              then pure $ Context $ Map.union ctx regularItems
+              else
                 let
-                  errorMsg (name, oldValue) =
+                  errorMsg (name, (oldValue, newValue)) =
                     pString "The variable "
                       <> indentPretty name
                       <> line
@@ -122,7 +125,7 @@ addExpressionVars newVars (Context ctx) =
                       <> indentPretty oldValue
                       <> line
                       <> pString "and is being redefined as "
-                      <> indentPretty (Map.lookup name regularItems)
+                      <> indentPretty newValue
                  in
                   throwDocError
                     ( pString "Error"
@@ -131,7 +134,7 @@ addExpressionVars newVars (Context ctx) =
                           ( concatWith
                               (\x y -> x <> line <> y)
                               ( errorMsg
-                                  <$> newValues
+                                  <$> Map.toList inter
                               )
                           )
                     )

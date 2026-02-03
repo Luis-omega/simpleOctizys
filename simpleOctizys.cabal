@@ -205,7 +205,7 @@ test-suite simpleOctizys-test
   main-is:          Main.hs
 
   -- Modules included in this executable, other than Main.
-  other-modules:
+  other-modules:    Test.Inference
 
   -- Test dependencies.
   build-depends:

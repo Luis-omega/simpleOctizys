@@ -141,7 +141,6 @@ inferenceWithEffects context expression = do
   ( _
     , _
     , _
-    , _
     , solvedType
     , _
     ) <-
