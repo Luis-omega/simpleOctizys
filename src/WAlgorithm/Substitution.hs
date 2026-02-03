@@ -1,18 +1,16 @@
 module WAlgorithm.Substitution
   ( Substitution (Substitution)
-  , SubstitutionItem (SubstitutionItem)
   , emptySubstitution
   , singletonSubstitution
-  , applySubstitutionItemToType
   , applySubstitutionToConstraint
   , applySubstitutionToType
   , applySubstitutionToExpression
   , applySubstitutionToParameter
   , applySubstitutionToDefinition
   , verifyNotRecursive
+  , addSubstitutions
   ) where
 
-import Control.Monad (foldM)
 import qualified Data.Map as Map
 import Effectful (Eff, (:>))
 import Effectful.Error.Static (Error)
@@ -32,21 +30,42 @@ import Ast.Type (SimpleType (..), hasTypeVar)
 import Common (throwDocError)
 import qualified Common
 import Data.Aeson (ToJSON)
+import qualified Data.Bifunctor
+import Data.Map (Map)
+import qualified Data.Maybe
 import GHC.Generics (Generic, Generically (..))
 import Logging.Effect (Log)
 import Logging.Entry (field)
 import qualified Logging.Loggers as Log
 
 
-data SubstitutionItem = SubstitutionItem Symbol SimpleType
-  deriving (Show, Eq, Ord, Generic)
-  deriving (ToJSON) via Generically SubstitutionItem
-
-
-newtype Substitution
-  = Substitution [SubstitutionItem]
+newtype Substitution = Substitution {unSubstitution :: Map Symbol SimpleType}
   deriving (Show, Eq, Ord, Generic)
   deriving (ToJSON) via Generically Substitution
+
+
+emptySubstitution :: Substitution
+emptySubstitution = Substitution mempty
+
+
+singletonSubstitution
+  :: Symbol -> SimpleType -> Substitution
+singletonSubstitution tv ty =
+  Substitution (Map.singleton tv ty)
+
+
+instance Pretty Substitution where
+  pretty s =
+    pretty '('
+      <+> line
+      <+> Common.prettyItemList
+        ( Data.Bifunctor.first TypeVariable
+            <$> Map.toList s.unSubstitution
+        )
+        (pretty ',')
+        (pretty '~')
+      <+> line
+      <+> pretty ')'
 
 
 verifyNotRecursive
@@ -72,149 +91,111 @@ verifyNotRecursive s ty =
             , field "type" ty
             ]
           throwDocError errorMsg
-    else pure (Substitution [SubstitutionItem s ty])
-
-
-emptySubstitution :: Substitution
-emptySubstitution = Substitution []
-
-
-singletonSubstitution
-  :: Symbol -> SimpleType -> Substitution
-singletonSubstitution tv ty =
-  Substitution [SubstitutionItem tv ty]
-
-
-instance Pretty SubstitutionItem where
-  pretty (SubstitutionItem s ty) =
-    pretty (TypeVariable s)
-      <+> pretty '~'
-      <+> pretty ty
-
-
-instance Pretty Substitution where
-  pretty (Substitution ls) =
-    pretty '('
-      <+> line
-      <+> Common.prettyItemList
-        ((\(SubstitutionItem s ty) -> (TypeVariable s, ty)) <$> ls)
-        (pretty ',')
-        (pretty '~')
-      <+> line
-      <+> pretty ')'
-
-
-applySubstitutionItemToType
-  :: SubstitutionItem
-  -> SimpleType
-  -> SimpleType
-applySubstitutionItemToType subs@(SubstitutionItem symbol value) ty =
-  case ty of
-    TypeVariable s ->
-      if s == symbol
-        then value
-        else ty
-    Boolean -> ty
-    IntType -> ty
-    Arrow arg out ->
-      Arrow
-        (applySubstitutionItemToType subs arg)
-        (applySubstitutionItemToType subs out)
-    RecordType fs ->
-      RecordType $
-        Map.map (applySubstitutionItemToType subs) fs
+    else pure (singletonSubstitution s ty)
 
 
 applySubstitutionToType
-  :: Error String :> es
-  => Substitution
+  :: Substitution
   -> SimpleType
-  -> Eff es SimpleType
-applySubstitutionToType (Substitution ls) ty =
-  foldM
-    ( \accType subs -> do
-        pure (applySubstitutionItemToType subs accType)
-    )
-    ty
-    ls
+  -> SimpleType
+applySubstitutionToType sub@(Substitution s) ty =
+  case ty of
+    TypeVariable symbol ->
+      Data.Maybe.fromMaybe ty (Map.lookup symbol s)
+    Boolean -> ty
+    IntType -> ty
+    Arrow arg out ->
+      let
+        newArg = applySubstitutionToType sub arg
+        newOut = applySubstitutionToType sub out
+       in
+        Arrow newArg newOut
+    RecordType fs ->
+      RecordType $ Map.map (applySubstitutionToType sub) fs
 
 
 applySubstitutionToConstraint
-  :: Error String :> es
-  => Log :> es
-  => Substitution
+  :: Substitution
   -> Constraint
-  -> Eff es Constraint
-applySubstitutionToConstraint s (EqConstraint t1 t2) = do
-  t3 <- applySubstitutionToType s t1
-  t4 <- applySubstitutionToType s t2
-  pure $ EqConstraint t3 t4
+  -> Constraint
+applySubstitutionToConstraint s (EqConstraint t1 t2) =
+  let
+    t3 = applySubstitutionToType s t1
+    t4 = applySubstitutionToType s t2
+   in
+    EqConstraint t3 t4
 applySubstitutionToConstraint s (HasFieldConstraint ty name) = do
-  newType <- applySubstitutionToType s ty
-  pure $ HasFieldConstraint newType name
+  let newType = applySubstitutionToType s ty
+   in HasFieldConstraint newType name
 
 
 applySubstitutionToParameter
-  :: Error String :> es
-  => Log :> es
-  => Substitution
+  :: Substitution
   -> Parameter
-  -> Eff es Parameter
-applySubstitutionToParameter s p = do
-  paramType <- mapM (applySubstitutionToType s) (getParameterType p)
-  pure $ Parameter (getParameterSymbol p) paramType
+  -> Parameter
+applySubstitutionToParameter s p =
+  let
+    paramType = applySubstitutionToType s <$> getParameterType p
+   in
+    Parameter (getParameterSymbol p) paramType
 
 
 applySubstitutionToDefinition
-  :: Error String :> es
-  => Log :> es
-  => Substitution
+  :: Substitution
   -> Definition
-  -> Eff es Definition
-applySubstitutionToDefinition s d = do
-  newAnnotation <- mapM (applySubstitutionToType s) d.annotation
-  newExpression <- applySubstitutionToExpression s d.value
-  pure $ Definition d.name newAnnotation newExpression
+  -> Definition
+applySubstitutionToDefinition s d =
+  let
+    newAnnotation = applySubstitutionToType s <$> d.annotation
+    newExpression = applySubstitutionToExpression s d.value
+   in
+    Definition d.name newAnnotation newExpression
 
 
 applySubstitutionToExpression
-  :: Error String :> es
-  => Log :> es
-  => Substitution
+  :: Substitution
   -> Expression
-  -> Eff es Expression
+  -> Expression
 applySubstitutionToExpression s expr =
   case expr of
-    IntLiteral _ -> pure expr
-    BoolLiteral _ -> pure expr
-    ExpressionVariable _ -> pure expr
-    Function param result -> do
-      newParam <- applySubstitutionToParameter s param
-      newResult <- applySubstitutionToExpression s result
-      pure $ Function newParam newResult
-    Application f arg -> do
-      newF <- applySubstitutionToExpression s f
-      newArg <- applySubstitutionToExpression s arg
-      pure $ Application newF newArg
-    Record fs -> do
+    IntLiteral _ -> expr
+    BoolLiteral _ -> expr
+    ExpressionVariable _ -> expr
+    Function param result ->
       let
-        items = Map.toList fs
-      newItems <-
-        mapM
-          ( \(x, y) -> do
-              yResult <- applySubstitutionToExpression s y
-              pure (x, yResult)
-          )
-          items
-      pure $ Record $ Map.fromList newItems
-    Selection expre name -> do
-      newExpr <- applySubstitutionToExpression s expre
-      pure $ Selection newExpr name
-    Let defs result -> do
-      newDefs <- mapM (applySubstitutionToDefinition s) defs
-      newResult <- applySubstitutionToExpression s result
-      pure $ Let newDefs newResult
-    Annotation ty expre -> do
-      newTy <- applySubstitutionToType s ty
-      newExpr <- applySubstitutionToExpression s expre
-      pure $ Annotation newTy newExpr
+        newParam = applySubstitutionToParameter s param
+        newResult = applySubstitutionToExpression s result
+       in
+        Function newParam newResult
+    Application f arg ->
+      let
+        newF = applySubstitutionToExpression s f
+        newArg = applySubstitutionToExpression s arg
+       in
+        Application newF newArg
+    Record fs -> Record $ Map.map (applySubstitutionToExpression s) fs
+    Selection expre name ->
+      let
+        newExpr = applySubstitutionToExpression s expre
+       in
+        Selection newExpr name
+    Let defs result ->
+      let
+        newDefs = applySubstitutionToDefinition s <$> defs
+        newResult = applySubstitutionToExpression s result
+       in
+        Let newDefs newResult
+    Annotation ty expre ->
+      let
+        newTy = applySubstitutionToType s ty
+        newExpr = applySubstitutionToExpression s expre
+       in
+        Annotation newTy newExpr
+
+
+addSubstitutions
+  :: Substitution
+  -> Substitution
+  -> Substitution
+addSubstitutions (Substitution itemsL) (Substitution itemsR) =
+  Substitution (Map.union itemsL itemsR)

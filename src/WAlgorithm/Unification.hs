@@ -1,6 +1,5 @@
 module WAlgorithm.Unification where
 
-import Control.Monad (foldM)
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Effectful (Eff, (:>))
@@ -14,7 +13,6 @@ import Ast.Inference (Constraint (..), infer)
 import Ast.Symbol (Symbol)
 import Ast.Type (SimpleType (..))
 import Common (prettyWithHeader, throwDocError)
-import Data.Maybe (mapMaybe)
 import Logging.Effect (Log)
 import Logging.Entry (field)
 import qualified Logging.Loggers as Log
@@ -86,10 +84,11 @@ unify lt rt =
         TypeVariable sr -> verifyNotRecursive sr lt
         Arrow argr outr -> do
           argSubs <- unify argl argr
-          outlSubs <- applySubstitutionToType argSubs outl
-          outRSubs <- applySubstitutionToType argSubs outr
+          let
+            outlSubs = applySubstitutionToType argSubs outl
+            outRSubs = applySubstitutionToType argSubs outr
           outSubs <- unify outlSubs outRSubs
-          addSubstitutions argSubs outSubs
+          pure $ addSubstitutions argSubs outSubs
         _ ->
           throwDocError
             ( prefixMessage
@@ -109,7 +108,7 @@ unify lt rt =
                 traverse (\(_, t1, t2) -> unify t1 t2) common
               case (onlyL, onlyR) of
                 ([], []) ->
-                  foldM addSubstitutions emptySubstitution subs
+                  pure $ foldr addSubstitutions emptySubstitution subs
                 ([], _) ->
                   throwDocError
                     ( prefixMessage
@@ -177,14 +176,16 @@ decomposeConstraints constraints =
         [ field "original constr" constr
         , field "new substitutions" newSubs
         ]
-      finalSub <- addSubstitutions acc newSubs
+      let
+        finalSub = addSubstitutions acc newSubs
       Log.trace
         "After adding susbtitution to decomposed constraints"
         [ field "original constr" constr
         , field "new substitutions" newSubs
         , field "merged substitution" finalSub
         ]
-      newConstraints <- mapM (applySubstitutionToConstraint finalSub) remain
+      let
+        newConstraints = applySubstitutionToConstraint finalSub <$> remain
       Log.trace
         "After new substitution is applied to all remain constraints"
         [ field "original constr" constr
@@ -220,28 +221,18 @@ solveExpressionFullInfo context expression = do
             <> hardline
             <> pretty e
         )
-    Right substitution -> do
-      maybeSolvedType <- tryError (applySubstitutionToType substitution inferType)
-      case maybeSolvedType of
-        Left (_, e) ->
-          throwDocError
-            ( prettyWithHeader "Expression" annotatedExpression
-                <> hardline
-                <> prettyWithHeader "Inferred type" inferType
-                <> hardline
-                <> prettyWithHeader "Constraints" constraints
-                <> hardline
-                <> pretty e
-            )
-        Right solvedType ->
-          pure
-            ( finalContext
-            , inferType
-            , constraints
-            , substitution
-            , solvedType
-            , annotatedExpression
-            )
+    Right substitution ->
+      let
+        solvedType = applySubstitutionToType substitution inferType
+       in
+        pure
+          ( finalContext
+          , inferType
+          , constraints
+          , substitution
+          , solvedType
+          , annotatedExpression
+          )
 
 
 solveExpression
@@ -255,34 +246,3 @@ solveExpression context expression = do
   (_, _, _, _, finalType, finalExpression) <-
     solveExpressionFullInfo context expression
   pure (finalType, finalExpression)
-
-
-applySubstitutionToItem
-  :: Error String :> es
-  => Log :> es
-  => Substitution
-  -> SubstitutionItem
-  -> Eff es (SubstitutionItem, Maybe Substitution)
-applySubstitutionToItem subs@(Substitution subsLists) (SubstitutionItem name ty) = do
-  newType <- applySubstitutionToType subs ty
-  let newItem = SubstitutionItem name newType
-  case lookup name ((\(SubstitutionItem n t) -> (n, t)) <$> subsLists) of
-    Just t -> do
-      newSubs <- unify ty t
-      pure (newItem, Just newSubs)
-    Nothing -> pure (newItem, Nothing)
-
-
-addSubstitutions
-  :: Error String :> es
-  => Log :> es
-  => Substitution
-  -> Substitution
-  -> Eff es Substitution
-addSubstitutions left@(Substitution itemsL) (Substitution items) = do
-  results <- mapM (applySubstitutionToItem left) items
-  let
-    newItems = fst <$> results
-    newSubs = mapMaybe snd results
-    newSubstitution = Substitution (itemsL <> newItems)
-  foldM addSubstitutions newSubstitution newSubs

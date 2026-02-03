@@ -50,7 +50,7 @@ infiniteRecursion =
 
 
 testExpression :: Expression
-testExpression = goodIf
+testExpression = infiniteRecursion
 
 
 mainEffect
